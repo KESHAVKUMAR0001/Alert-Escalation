@@ -1,95 +1,65 @@
 import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 
-const { Schema } = mongoose;
-
-// Possible states an alert can be in
-export const ALERT_STATES = ["OPEN", "ESCALATED", "AUTO_CLOSED", "RESOLVED"];
-
-// Supported severity levels
+export const ALERT_STATES = ["OPEN", "ESCALATED", "RESOLVED"];
 export const ALERT_LEVELS = ["INFO", "WARNING", "CRITICAL"];
+export const SOURCE_TYPES = ["overspeed", "feedback_negative", "compliance"];
 
-// Tracks lifecycle changes of an alert
-const historySchema = new Schema(
+const historySchema = new mongoose.Schema(
   {
-    fromState: {
-      type: String,
-      enum: ALERT_STATES,
-    },
-    toState: {
-      type: String,
-      enum: ALERT_STATES,
-      required: true,
-    },
-    reason: {
-      type: String,
-      required: true,
-    },
-    changedAt: {
-      type: Date,
-      default: Date.now,
-    },
+    fromState: { type: String, default: null },
+    toState: { type: String, required: true },
+    reason: { type: String, required: true },
+    changedAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
 
-const alertSchema = new Schema(
+const alertSchema = new mongoose.Schema(
   {
     alertId: {
       type: String,
       unique: true,
       default: () => uuidv4(),
     },
-
-    sourceType: {
+    driverId: {
       type: String,
       required: true,
-      trim: true,
       index: true,
     },
-
+    sourceType: {
+      type: String,
+      enum: SOURCE_TYPES,
+      required: true,
+      index: true,
+    },
+    message: {
+      type: String,
+      default: "",
+    },
     severity: {
       type: String,
       enum: ALERT_LEVELS,
       required: true,
-      index: true,
     },
-
     status: {
       type: String,
       enum: ALERT_STATES,
       default: "OPEN",
       index: true,
     },
-
-    driverId: {
+    escalationReason: {
       type: String,
-      required: true,
-      index: true,
+      default: "",
     },
-
-    metadata: {
-      type: Schema.Types.Mixed,
-      default: {},
-    },
-
-    escalationCount: {
-      type: Number,
-      default: 0,
-    },
-
     history: {
       type: [historySchema],
       default: [],
     },
   },
-  {
-    timestamps: true,
-    strict: true,
-  }
+  { timestamps: true }
 );
 
-// Helps rule engine query recent alerts efficiently
 alertSchema.index({ driverId: 1, sourceType: 1, createdAt: -1 });
 
 const Alert = mongoose.model("Alert", alertSchema);

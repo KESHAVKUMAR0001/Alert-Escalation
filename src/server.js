@@ -5,19 +5,18 @@ import app from "./app.js";
 import connectDB from "./config/db.js";
 import { connectRedis } from "./config/redis.js";
 import logger from "./config/logger.js";
-import { startAutoCloseJob } from "./jobs/autoCloseJob.js";
+import { startAlertCronJob } from "./jobs/alertCronJob.js";
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
     await connectDB();
-  connectRedis();
-  
-  startAutoCloseJob();    //For auto closing job after 2 mins
+    connectRedis();
+    startAlertCronJob();
 
     app.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
+      logger.info(`Alert System Server running on port ${PORT}`);
     });
   } catch (error) {
     logger.error("Server failed to start", {

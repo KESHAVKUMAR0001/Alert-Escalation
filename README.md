@@ -1,154 +1,50 @@
-# Intelligent Alert Escalation And Resolution System
+# Intelligent Alert Escalation and Resolution System
 
 ## Overview
-
-This project implements a rule-driven alert lifecycle management system that handles creation, escalation, resolution, and automated closure of operational alerts.
-
-The idea is to simulate how real-world fleet monitoring or operations systems behave — where alerts are not just stored, but actively processed based on rules.
-
-It supports scenarios like overspeed events, compliance checks, and negative feedback tracking, with a focus on lifecycle tracking, rule evaluation, and visibility through a dashboard.
-
----
+A rule-driven alert lifecycle management backend built with Node.js, Express, MongoDB, and Redis. It processes operational events, evaluates escalation thresholds, manages state transitions, and supports dashboard analytics.
 
 ## Tech Stack
+- Backend: Node.js (ES Modules), Express.js, MongoDB (Mongoose), Redis, node-cron
+- Frontend: React, Chart.js, Axios
+- Logging & Utilities: Winston logger, UUID
 
-### Backend
-- Node.js (ES Modules)
-- Express
-- MongoDB (Mongoose)
-- Redis (used for caching dashboard data)
-- node-cron (for scheduled background jobs)
+## Alert State Machine
+Alerts transition through defined lifecycle states:
+- OPEN: Initial state on alert creation.
+- ESCALATED: Promoted state when threshold rules are breached.
+- RESOLVED: Terminal state when manually resolved by an analyst.
+- AUTO_CLOSED: Closed automatically by background compliance or expiry jobs.
 
-### Frontend
-- React
-- Chart.js
-- Axios
-
----
-
-## Core Features
-
-### Alert Lifecycle
-
-Each alert moves through a defined lifecycle:
-
-OPEN → ESCALATED → AUTO_CLOSED / RESOLVED
-
-Every transition is stored in a history log so the full lifecycle can be traced.
-
----
-
-### Rule-Based Escalation
-
-Alerts are escalated when:
-- Same driverId + sourceType
-- Within a configured time window
-- Count crosses threshold
-
-On escalation:
-- Status → ESCALATED
-- Severity → CRITICAL
-- History updated
-
-Rules are defined in a JSON config, so behavior can be adjusted without changing code.
-
----
-
-### Auto-Close Engine
-
-A background job runs periodically and checks:
-
-- Compliance-based condition (e.g. document_valid = true)
-- Expiry window (alert becomes stale after some time)
-
-If conditions match, alert is moved to AUTO_CLOSED.
-
----
-
-### Dashboard
-
-The system exposes APIs for:
-- Severity summary
-- Top drivers
-- Trends over time
-- Recent auto-closed alerts
-- Active rule configuration
-
----
-
-## Architecture
-
-Routes → Controllers → Services → Models
-
----
-
-## Caching Strategy
-
-Redis is used for:
-- Severity summary
-- Top drivers
-
-Cache is invalidated on alert updates.
-
----
-
-## Time & Space Complexity
-
-- Alert Creation: O(1)
-- Escalation: O(log n)
-- Auto-Close Job: O(m)
-- Dashboard Aggregation: O(n)
-
----
-
-## Design Trade-offs
-
-- Used cron instead of event-driven system (simpler, slight delay)
-- JSON rules instead of DB (flexible but not dynamic reload)
-- Partial caching (simpler invalidation)
-- Simplicity over full scalability
-
----
-
-## Failure Handling
-
-- Centralized error handler
-- Logging with Winston
-- Redis fallback handling
-
----
-
-## How to Run
-
-Create .env file with:
-PORT=5000  
-MONGO_URI=your_mongodb_connection_string  
-REDIS_HOST=your_redis_host  
-REDIS_PORT=your_redis_port  
-REDIS_PASSWORD=your_redis_password  
-
-Run:
-npm install  
-npm run dev  
-
----
+## Escalation Rules
+Rules are configured in `src/config/rules.json`:
+- Overspeed: Escalates if count reaches 3 within 60 minutes.
+- Negative Feedback: Escalates if count reaches 2 within 24 hours.
+- Compliance: Validates document status and auto-closes on compliance.
 
 ## API Endpoints
 
-Alerts:
-POST /api/v1/alerts  
-GET /api/v1/alerts/:alertId  
-PATCH /api/v1/alerts/:alertId/resolve  
+### Alert Endpoints
+- POST /api/v1/alerts - Create a new alert
+- GET /api/v1/alerts/:alertId - Fetch alert by ID
+- PATCH /api/v1/alerts/:alertId/resolve - Resolve an alert
 
-Dashboard:
-GET /api/v1/dashboard/summary  
-GET /api/v1/dashboard/top-drivers  
-GET /api/v1/dashboard/trends  
-GET /api/v1/dashboard/recent-auto-closed  
-GET /api/v1/dashboard/rules  
+### Dashboard Endpoints
+- GET /api/v1/dashboard/summary - Severity distribution summary
+- GET /api/v1/dashboard/top-drivers - Drivers with highest alert counts
+- GET /api/v1/dashboard/trends - Alert trend analytics
+- GET /api/v1/dashboard/recent-auto-closed - Recent auto-closed alerts
+- GET /api/v1/dashboard/rules - Active rule configurations
 
----
+## Setup and Installation
 
-## Final Notes
+1. Clone the repository and navigate to project root:
+   cd Alert-Escalation
 
-This project focuses on building a system that actively manages alerts using rules, background processing, and analytics.
+2. Create a `.env` file with environment variables:
+   PORT=5000
+   MONGO_URI=mongodb://localhost:27017/alert-db
+   REDIS_HOST=127.0.0.1
+   REDIS_PORT=6379
+
+3. Install dependencies and start dev server:
+   npm install && npm run dev

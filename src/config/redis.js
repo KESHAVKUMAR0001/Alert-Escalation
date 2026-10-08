@@ -4,26 +4,32 @@ import logger from "./logger.js";
 let client = null;
 
 const connectRedis = () => {
-  const options = {
-    host: process.env.REDIS_HOST,
-    port: Number(process.env.REDIS_PORT),
-    connectTimeout: 10000,
-  };
+  try {
+    const options = {
+      host: process.env.REDIS_HOST || "127.0.0.1",
+      port: Number(process.env.REDIS_PORT) || 6379,
+      connectTimeout: 5000,
+      maxRetriesPerRequest: 1,
+      retryStrategy: () => null, // Don't crash if Redis is unavailable
+    };
 
-  // Only include password if one exists
-  if (process.env.REDIS_PASSWORD) {
-    options.password = process.env.REDIS_PASSWORD;
+    if (process.env.REDIS_PASSWORD) {
+      options.password = process.env.REDIS_PASSWORD;
+    }
+
+    client = new Redis(options);
+
+    client.on("connect", () => {
+      logger.info("Redis connected successfully");
+    });
+
+    client.on("error", (err) => {
+      logger.warn(`Redis connection unavailable: ${err.message}. Proceeding with direct DB queries.`);
+    });
+  } catch (err) {
+    logger.warn(`Failed to initialize Redis client: ${err.message}`);
+    client = null;
   }
-
-  client = new Redis(options);
-
-  client.on("ready", () => {
-    logger.info("Redis connection established");
-  });
-
-  client.on("error", (err) => {
-    logger.error(`Redis error: ${err.message}`);
-  });
 
   return client;
 };

@@ -1,113 +1,69 @@
 import Alert from "../models/Alert.js";
 import { getRedisClient } from "../config/redis.js";
+import logger from "../config/logger.js";
 
-const CACHE_TTL = 60;
+const CACHE_KEY = "dashboard:data";
+const CACHE_TTL = 300; // 5 minutes
 
-// Safely read from Redis
-const getFromCache = async (key) => {
+export const getDashboardData = async () => {
   const redis = getRedisClient();
-  if (!redis) return null;
 
-  try {
-    const value = await redis.get(key);
-    return value ? JSON.parse(value) : null;
-  } catch {
-    return null;
+  // Try fetching from Redis first
+  if (redis) {
+    try {
+      const cachedData = await redis.get(CACHE_KEY);
+      if (cachedData) {
+        logger.info("Retrieved dashboard metrics from Redis cache");
+        return JSON.parse(cachedData);
+      }
+    } catch (err) {
+      logger.warn(`Redis get failed: ${err.message}. Fetching from MongoDB directly.`);
+    }
   }
-};
 
-// Safely write to Redis
-const setToCache = async (key, value) => {
-  const redis = getRedisClient();
-  if (!redis) return;
+  // Calculate stats directly from MongoDB
+  const total = await Alert.countDocuments();
+  const open = await Alert.countDocuments({ status: "OPEN" });
+  const warning = await Alert.countDocuments({ severity: "WARNING", status: { $ne: "RESOLVED" } });
+  const critical = await Alert.countDocuments({ severity: "CRITICAL", status: { $ne: "RESOLVED" } });
+  const resolved = await Alert.countDocuments({ status: "RESOLVED" });
 
-  try {
-    await redis.set(key, JSON.stringify(value), "EX", CACHE_TTL);
-  } catch {
-    // ignore cache failures silently
-  }
-};
+  const escalatedAlerts = await Alert.find({ status: "ESCALATED" })
+    .sort({ updatedAt: -1 })
+    .limit(10);
 
-const getSeveritySummary = async () => {
-  const cacheKey = "dashboard:summary";
+  const recentAlerts = await Alert.find()
+    .sort({ createdAt: -1 })
+    .limit(10);
 
-  const cached = await getFromCache(cacheKey);
-  if (cached) return cached;
-
-  const data = await Alert.aggregate([
-    { $match: { status: { $in: ["OPEN", "ESCALATED"] } } },
-    {
-      $group: {
-        _id: "$severity",
-        count: { $sum: 1 },
-      },
-    },
-  ]);
-
-  await setToCache(cacheKey, data);
-
-  return data;
-};
-
-const getTopDrivers = async () => {
-  const cacheKey = "dashboard:topDrivers";
-
-  const cached = await getFromCache(cacheKey);
-  if (cached) return cached;
-
-  const data = await Alert.aggregate([
-    { $match: { status: { $in: ["OPEN", "ESCALATED"] } } },
-    {
-      $group: {
-        _id: "$driverId",
-        count: { $sum: 1 },
-      },
-    },
+  const topDrivers = await Alert.aggregate([
+    { $group: { _id: "$driverId", count: { $sum: 1 } } },
     { $sort: { count: -1 } },
     { $limit: 5 },
   ]);
 
-  await setToCache(cacheKey, data);
-
-  return data;
-};
-
-const getRecentAutoClosed = async () => {
-  return Alert.find({ status: "AUTO_CLOSED" })
-    .sort({ updatedAt: -1 })
-    .limit(10);
-};
-
-const getAlertTrends = async () => {
-  return Alert.aggregate([
-    {
-      $group: {
-        _id: {
-          $dateToString: {
-            format: "%Y-%m-%d",
-            date: "$createdAt",
-          },
-        },
-        total: { $sum: 1 },
-        escalated: {
-          $sum: {
-            $cond: [{ $eq: ["$status", "ESCALATED"] }, 1, 0],
-          },
-        },
-        autoClosed: {
-          $sum: {
-            $cond: [{ $eq: ["$status", "AUTO_CLOSED"] }, 1, 0],
-          },
-        },
-      },
+  const dashboardPayload = {
+    metrics: {
+      total,
+      open,
+      warning,
+      critical,
+      resolved,
     },
-    { $sort: { _id: 1 } },
-  ]);
-};
+    escalatedAlerts,
+    recentAlerts,
+    topDrivers,
+  };
 
-export {
-  getSeveritySummary,
-  getTopDrivers,
-  getRecentAutoClosed,
-  getAlertTrends,
+  // Cache result in Redis
+  if (redis) {
+    try {
+      await redis.set(CACHE_KEY, JSON.stringify(dashboardPayload), "EX", CACHE_TTL);
+      logger.info("Saved fresh dashboard metrics to Redis cache");
+    } catch (err) {
+      logger.warn(`Redis set failed: ${err.message}`);
+    }
+  }
+
+  return dashboardPayload;
 };
